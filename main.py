@@ -1,6 +1,9 @@
 import socket
 import os
 
+py_response_status = ''
+py_response_headers = ''
+
 def parseRequest(request,addr):
 
     request_split = request.split('\r\n')
@@ -65,6 +68,13 @@ def loadStatic(static_path = 'static'):
         f.close()
     return statics
 
+def start_response(status,response_headers):
+    py_response_status = status
+    py_response_headers = ''
+    for k,v in response_headers:
+        kv = k + ':' + v + os.linesep
+        py_response_headers += kv
+
 def main():
     statics = loadStatic('static')
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -83,22 +93,31 @@ def main():
             'html': 'text/html'
         }
         suf = request['url'].split('.')[-1]
-        tyep = ""
-        if(suf in file_type):
-            type = file_type[suf]
+        if(suf == 'py'):
+            py_name = request['url'][1:-3]
+            py_module = __import__(py_name)
+            env = {}
+            response_body = py_module.application(env,start_response)
+            py_response = bytes(py_response_status + os.linesep + py_response_headers + os.linesep + response_body, encoding="utf-8")
+            conn.sendall(py_response)
+            conn.close()
         else:
-            type = 'text/html'
-        response = bytes('HTTP/1.1 200 OK\r\nContent-Type:%s\r\n\r\n' % type,encoding = "utf-8")
-
-        if(request['url'] in statics):
-            temp = statics[request['url']]
-            if(isinstance(temp,str)):
-                response += bytes(statics[request['url']], encoding="utf-8")
+            tyep = ""
+            if(suf in file_type):
+                type = file_type[suf]
             else:
-                response += statics[request['url']]
+                type = 'text/html'
+            response = bytes('HTTP/1.1 200 OK\r\nContent-Type:%s\r\n\r\n' % type,encoding = "utf-8")
+
+            if(request['url'] in statics):
+                temp = statics[request['url']]
+                if(isinstance(temp,str)):
+                    response += bytes(statics[request['url']], encoding="utf-8")
+                else:
+                    response += statics[request['url']]
 
 
-        conn.sendall(response)
-        conn.close()
+            conn.sendall(response)
+            conn.close()
 
 main()
